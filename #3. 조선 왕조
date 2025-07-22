@@ -1,0 +1,368 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define MAX_NAME_LEN 50
+#define MAX_KINGS 30
+
+// 트리 노드 구조체
+typedef struct TreeNode {
+    char name[MAX_NAME_LEN];
+    struct TreeNode* children[MAX_KINGS];
+    int child_count;
+    struct TreeNode* parent;
+    int order; // 왕위 순서
+} TreeNode;
+
+// 전역 변수
+TreeNode* root = NULL;
+TreeNode* all_nodes[MAX_KINGS];
+int node_count = 0;
+TreeNode* king_order[MAX_KINGS]; // 왕위 순서대로 저장
+int total_kings = 0;
+
+// 새로운 노드 생성
+TreeNode* create_node(const char* name) {
+    TreeNode* node = (TreeNode*)malloc(sizeof(TreeNode));
+    strcpy(node->name, name);
+    node->child_count = 0;
+    node->parent = NULL;
+    node->order = -1;
+    for (int i = 0; i < MAX_KINGS; i++) {
+        node->children[i] = NULL;
+    }
+    all_nodes[node_count++] = node;
+    return node;
+}
+
+// 이름으로 노드 찾기
+TreeNode* find_node(const char* name) {
+    for (int i = 0; i < node_count; i++) {
+        if (strcmp(all_nodes[i]->name, name) == 0) {
+            return all_nodes[i];
+        }
+    }
+    return NULL;
+}
+
+// 트리에 관계 추가
+void add_relationship(const char* child_name, const char* parent_name, int order) {
+    TreeNode* child = find_node(child_name);
+    TreeNode* parent = find_node(parent_name);
+    
+    if (child == NULL) {
+        child = create_node(child_name);
+    }
+    if (parent == NULL) {
+        parent = create_node(parent_name);
+    }
+    
+    child->parent = parent;
+    child->order = order;
+    parent->children[parent->child_count++] = child;
+    king_order[order] = child;
+}
+
+// 파일에서 왕조 정보 읽기
+void load_dynasty_data() {
+    FILE* file = fopen("조선왕조.txt", "r");
+    if (file == NULL) {
+        printf("조선왕조.txt 파일을 열 수 없습니다. 기본 데이터를 사용합니다.\n\n");
+        
+        // 실제 파일 데이터 사용
+        char kings[][2][MAX_NAME_LEN] = {
+            {"태조", ""},
+            {"정종", "태조"},
+            {"태종", "태조"},
+            {"세종", "태종"},
+            {"문종", "세종"},
+            {"단종", "문종"},
+            {"세조", "세종"},
+            {"예종", "세조"},
+            {"성종", "세조"},
+            {"연산군", "성종"},
+            {"중종", "성종"},
+            {"인종", "중종"},
+            {"명종", "중종"},
+            {"선조", "중종"},
+            {"광해군", "선조"},
+            {"인조", "선조"},
+            {"효종", "인조"},
+            {"현종", "효종"},
+            {"숙종", "현종"},
+            {"경종", "숙종"},
+            {"영조", "숙종"},
+            {"정조", "영조"},
+            {"순조", "정조"},
+            {"헌종", "순조"},
+            {"철종", "영조"},
+            {"고종", "인조"},
+            {"순종", "고종"}
+        };
+        
+        total_kings = 27;
+        
+        // 루트 노드 설정
+        root = create_node("태조");
+        root->order = 0;
+        king_order[0] = root;
+        
+        // 관계 추가
+        for (int i = 1; i < total_kings; i++) {
+            if (strlen(kings[i][1]) > 0) {
+                add_relationship(kings[i][0], kings[i][1], i);
+            }
+        }
+    } else {
+        char line[200];
+        char king[MAX_NAME_LEN], father[MAX_NAME_LEN];
+        int order = 0;
+        
+        while (fgets(line, sizeof(line), file)) {
+            // 줄바꿈 문자 제거
+            line[strcspn(line, "\n\r")] = 0;
+            if (strlen(line) == 0) continue;
+            
+            // 공백으로 분리
+            char* space_pos = strchr(line, ' ');
+            if (space_pos == NULL) {
+                // 첫 번째 왕 (태조)
+                strcpy(king, line);
+                root = create_node(king);
+                root->order = order;
+                king_order[order] = root;
+            } else {
+                // 왕과 아버지 분리
+                *space_pos = '\0';
+                strcpy(king, line);
+                strcpy(father, space_pos + 1);
+                add_relationship(king, father, order);
+            }
+            order++;
+        }
+        total_kings = order;
+        fclose(file);
+    }
+}
+
+// 트리 출력 (들여쓰기)
+void print_tree(TreeNode* node, int depth) {
+    if (node == NULL) return;
+    
+    for (int i = 0; i < depth; i++) {
+        printf("  ");
+    }
+    printf("└─ %s (%d대)\n", node->name, node->order + 1);
+    
+    for (int i = 0; i < node->child_count; i++) {
+        print_tree(node->children[i], depth + 1);
+    }
+}
+
+// 특정 노드의 모든 후손 찾기 (재귀적)
+void find_all_descendants(TreeNode* node, TreeNode** descendants, int* desc_count) {
+    for (int i = 0; i < node->child_count; i++) {
+        descendants[(*desc_count)++] = node->children[i];
+        find_all_descendants(node->children[i], descendants, desc_count);
+    }
+}
+
+// 직계 후손 중 왕이 된 사람 수 계산
+int count_direct_king_descendants(TreeNode* node) {
+    int count = 0;
+    for (int i = 0; i < node->child_count; i++) {
+        count++;
+        count += count_direct_king_descendants(node->children[i]);
+    }
+    return count;
+}
+
+// 퀴즈 1: 조선의 왕을 순서대로 출력하시오.
+void quiz1() {
+    printf("1. 조선의 왕을 순서대로 출력하시오.\n");
+    printf("답: ");
+    for (int i = 0; i < total_kings; i++) {
+        printf("%s", king_order[i]->name);
+        if (i < total_kings - 1) printf(" → ");
+    }
+    printf("\n\n");
+}
+
+// 퀴즈 2: 조선의 왕을 역순으로 출력하시오.
+void quiz2() {
+    printf("2. 조선의 왕을 역순으로 출력하시오.\n");
+    printf("답: ");
+    for (int i = total_kings - 1; i >= 0; i--) {
+        printf("%s", king_order[i]->name);
+        if (i > 0) printf(" → ");
+    }
+    printf("\n\n");
+}
+
+// 퀴즈 3: 조선의 왕은 모두 몇 명인가?
+void quiz3() {
+    printf("3. 조선의 왕은 모두 몇 명인가?\n");
+    printf("답: %d명\n\n", total_kings);
+}
+
+// 퀴즈 4: 조선의 왕 중에서 인조의 후손은 누구누구인가?
+void quiz4() {
+    printf("4. 조선의 왕 중에서 인조의 후손은 누구누구인가?\n");
+    TreeNode* injo = find_node("인조");
+    if (injo) {
+        TreeNode* descendants[MAX_KINGS];
+        int desc_count = 0;
+        find_all_descendants(injo, descendants, &desc_count);
+        
+        printf("답: ");
+        for (int i = 0; i < desc_count; i++) {
+            printf("%s", descendants[i]->name);
+            if (i < desc_count - 1) printf(", ");
+        }
+        printf("\n\n");
+    }
+}
+
+// 퀴즈 5: 직계 후손이 왕이 되지 못한 왕은 누구누구인가?
+void quiz5() {
+    printf("5. 직계 후손이 왕이 되지 못한 왕은 누구누구인가?\n");
+    printf("답: ");
+    int first = 1;
+    for (int i = 0; i < total_kings; i++) {
+        if (king_order[i]->child_count == 0) {
+            if (!first) printf(", ");
+            printf("%s", king_order[i]->name);
+            first = 0;
+        }
+    }
+    printf("\n\n");
+}
+
+// 퀴즈 6: 직계 후손이 왕이 된 수가 가장 많은 왕은 누구인가?
+void quiz6() {
+    printf("6. 직계 후손이 왕이 된 수가 가장 많은 왕은 누구인가?\n");
+    int max_descendants = 0;
+    TreeNode* max_king = NULL;
+    
+    for (int i = 0; i < total_kings; i++) {
+        int desc_count = count_direct_king_descendants(king_order[i]);
+        if (desc_count > max_descendants) {
+            max_descendants = desc_count;
+            max_king = king_order[i];
+        }
+    }
+    
+    printf("답: %s (%d명의 후손)\n\n", max_king ? max_king->name : "없음", max_descendants);
+}
+
+// 퀴즈 7: 정종의 형제로 조선의 왕이 된 사람은 누구인가?
+void quiz7() {
+    printf("7. 정종의 형제로 조선의 왕이 된 사람은 누구인가?\n");
+    TreeNode* jeongjong = find_node("정종");
+    if (jeongjong && jeongjong->parent) {
+        printf("답: ");
+        TreeNode* parent = jeongjong->parent;
+        int first = 1;
+        for (int i = 0; i < parent->child_count; i++) {
+            if (strcmp(parent->children[i]->name, "정종") != 0) {
+                if (!first) printf(", ");
+                printf("%s", parent->children[i]->name);
+                first = 0;
+            }
+        }
+        printf("\n\n");
+    }
+}
+
+// 퀴즈 8: 순종의 직계 선조를 모두 출력하시오.
+void quiz8() {
+    printf("8. 순종의 직계 선조를 모두 출력하시오.\n");
+    TreeNode* sunjong = find_node("순종");
+    if (sunjong) {
+        printf("답: ");
+        TreeNode* current = sunjong->parent;
+        int first = 1;
+        while (current != NULL) {
+            if (!first) printf(" ← ");
+            printf("%s", current->name);
+            current = current->parent;
+            first = 0;
+        }
+        printf("\n\n");
+    }
+}
+
+// 퀴즈 9: 직계 후손이 2명 이상 왕이 된 왕은 몇 명인가?
+void quiz9() {
+    printf("9. 직계 후손이 2명 이상 왕이 된 왕은 몇 명인가?\n");
+    int count = 0;
+    for (int i = 0; i < total_kings; i++) {
+        if (king_order[i]->child_count >= 2) {
+            count++;
+        }
+    }
+    printf("답: %d명\n\n", count);
+}
+
+// 퀴즈 10: 예종은 태종의 몇 대 후손인가?
+void quiz10() {
+    printf("10. 예종은 태종의 몇 대 후손인가?\n");
+    TreeNode* yejong = find_node("예종");
+    TreeNode* taejong = find_node("태종");
+    
+    if (yejong && taejong) {
+        // 예종에서 태종까지의 경로 찾기
+        TreeNode* current = yejong;
+        int generations = 0;
+        
+        while (current != NULL && current != taejong) {
+            current = current->parent;
+            generations++;
+        }
+        
+        if (current == taejong) {
+            printf("답: %d대 후손\n\n", generations);
+        } else {
+            printf("답: 직계 관계가 아닙니다.\n\n");
+        }
+    }
+}
+
+// 메모리 해제
+void free_tree() {
+    for (int i = 0; i < node_count; i++) {
+        free(all_nodes[i]);
+    }
+}
+
+int main() {
+    printf("=== 조선왕조 계보 트리 프로그램 ===\n\n");
+    
+    // 데이터 로드
+    load_dynasty_data();
+    
+    // 트리 구조 출력
+    printf("조선왕조 계보 트리:\n");
+    printf("===================\n");
+    if (root != NULL) {
+        print_tree(root, 0);
+    }
+    printf("\n");
+    
+    // 퀴즈 실행
+    printf("=== 퀴즈 시작 ===\n\n");
+    
+    void (*quiz_functions[])() = {
+        quiz1, quiz2, quiz3, quiz4, quiz5,
+        quiz6, quiz7, quiz8, quiz9, quiz10
+    };
+    
+    for (int i = 0; i < 10; i++) {
+        quiz_functions[i]();
+    }
+    
+    // 메모리 해제
+    free_tree();
+    
+    return 0;
+}
